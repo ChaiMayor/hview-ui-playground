@@ -51,7 +51,10 @@ async function copyLink() {
 function toggleDark() {
   const cls = document.documentElement.classList;
   cls.toggle("dark");
-  localStorage.setItem("vue-sfc-playground-prefer-dark", String(cls.contains("dark")));
+  localStorage.setItem(
+    "vue-sfc-playground-prefer-dark",
+    String(cls.contains("dark")),
+  );
 }
 
 onMounted(async () => {
@@ -66,9 +69,13 @@ onMounted(async () => {
 });
 
 async function fetchVersions(): Promise<string[]> {
-  const res = await fetch(`https://api.github.com/repos/vuejs/core/releases?per_page=100`);
+  const res = await fetch(
+    `https://api.github.com/repos/vuejs/core/releases?per_page=100`,
+  );
   const releases: any[] = await res.json();
-  const versions = releases.map((r) => (/^v/.test(r.tag_name) ? r.tag_name.slice(1) : r.tag_name));
+  const versions = releases.map((r) =>
+    /^v/.test(r.tag_name) ? r.tag_name.slice(1) : r.tag_name,
+  );
   // if the latest version is a pre-release, list all current pre-releases
   // otherwise filter out pre-releases
   let isInPreRelease = versions[0].includes("-");
@@ -103,7 +110,9 @@ async function fetchVersions(): Promise<string[]> {
   <nav>
     <h1>
       <img alt="logo" src="https://oss.zhishiyu.online/common/hview-logo.png" />
-      <span style="margin-top: -2px; margin-right: 6px">Hview UI Playground</span>
+      <span style="margin-top: -2px; margin-right: 6px"
+        >Hview UI Playground</span
+      >
       <!-- <h-tag size="small" style="margin: 0 8px">{{ pkg.version }}</h-tag> -->
       <!-- <h-tag size="small"> repl v1.3.0 </h-tag> -->
     </h1>
@@ -142,11 +151,16 @@ async function fetchVersions(): Promise<string[]> {
       <button title="Copy sharable URL" class="share" @click="copyLink">
         <Share />
       </button>
-      <button title="Download project files" class="download" @click="downloadProject(store)">
+      <button
+        title="Download project files"
+        class="download"
+        @click="downloadProject(store)">
         <Download />
       </button>
       <button title="View on GitHub" class="github">
-        <a href="https://github.com/ChaiMayor/hview-ui/tree/dev" target="_blank">
+        <a
+          href="https://github.com/ChaiMayor/hview-ui/tree/dev"
+          target="_blank">
           <GitHub />
         </a>
       </button>

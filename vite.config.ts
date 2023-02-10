@@ -1,6 +1,5 @@
 // import fs from "fs";
 // import path from "path";
-// Plugin
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import execa from "execa";
@@ -22,8 +21,7 @@ import execa from "execa";
 const commit = execa.sync("git", ["rev-parse", "HEAD"]).stdout.slice(0, 7);
 
 export default defineConfig({
-  // @ts-ignore
-  plugins: [vue()],
+  plugins: [vue() as Plugin],
   define: {
     __COMMIT__: JSON.stringify(commit),
     __VUE_PROD_DEVTOOLS__: JSON.stringify(true),
