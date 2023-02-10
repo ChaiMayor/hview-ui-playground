@@ -7,7 +7,6 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
-    Backup: typeof import('./components/backup.vue')['default']
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
