@@ -1,9 +1,9 @@
 // @ts-ignore
-import pkg from "../package.json";
-const ver = pkg.version;
+// import pkg from "../../package.json";
+// const ver = pkg.version;
 
 export default {
-  "hview-plus": `https://unpkg.com/hview-plus@${ver}/dist/index.full.min.js`,
+  "hview-plus": `https://unpkg.com/hview-plus@1.3.15/dist/index.full.min.js`,
   // "@hview-plus/locale":
   // 	"https://unpkg.com/@hview-plus/locale@1.0.1/es/index.js",
   // "@hview-plus/utils": "https://unpkg.com/@hview-plus/utils@1.0.1/es/index.js",

@@ -17,8 +17,8 @@
 </template>
 
 <script setup lang="ts">
-import Header from "./Header.vue";
-import { ReplStore } from "./store";
+import Header from "./components/Header.vue";
+import { ReplStore } from "./composables/store";
 // import { Repl, ReplStore } from "@vue/repl";
 import { Repl } from "@vue/repl";
 import { ref, watchEffect } from "vue";

@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { downloadProject } from "./download/download";
 import { ref, onMounted } from "vue";
-import Sun from "./icons/Sun.vue";
-import Moon from "./icons/Moon.vue";
-import Share from "./icons/Share.vue";
-import Download from "./icons/Download.vue";
-import GitHub from "./icons/GitHub.vue";
+import Sun from "../icons/Sun.vue";
+import Moon from "../icons/Moon.vue";
+import Share from "../icons/Share.vue";
+import GitHub from "../icons/GitHub.vue";
 // @ts-ignore
-// import pkg from "../package.json";
+import pkg from "../../package.json";
 
 // @ts-ignore
 const props = defineProps(["store", "dev", "ssr"]);
@@ -113,8 +111,8 @@ async function fetchVersions(): Promise<string[]> {
       <span style="margin-top: -2px; margin-right: 6px"
         >Hview UI Playground</span
       >
-      <!-- <h-tag size="small" style="margin: 0 8px">{{ pkg.version }}</h-tag> -->
-      <!-- <h-tag size="small"> repl v1.3.0 </h-tag> -->
+      <el-tag size="small" style="margin: 0 8px">{{ pkg.version }}</el-tag>
+      <el-tag size="small"> repl v1.3.0 </el-tag>
     </h1>
     <div class="links">
       <!-- <div class="version" @click.stop>
@@ -150,12 +148,6 @@ async function fetchVersions(): Promise<string[]> {
       </button>
       <button title="Copy sharable URL" class="share" @click="copyLink">
         <Share />
-      </button>
-      <button
-        title="Download project files"
-        class="download"
-        @click="downloadProject(store)">
-        <Download />
       </button>
       <button title="View on GitHub" class="github">
         <a

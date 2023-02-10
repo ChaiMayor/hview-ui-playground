@@ -1,13 +1,13 @@
 import { reactive, watchEffect, version } from "vue";
 import { compileFile, File } from "@vue/repl";
-import { utoa, atou } from "./utils/encode";
+import { utoa, atou } from "../utils/encode";
 import * as defaultCompiler from "vue/compiler-sfc";
 import type { Store, SFCOptions, StoreState, OutputModes } from "@vue/repl";
 
-import welcomeCode from "./template/welcome.vue?raw";
-import hviewReplPluginCode from "./template/hview-plus?raw";
-import containerCode from "./template/main.vue?raw";
-import hviewImports from "./template/imports.js";
+import welcomeCode from "../template/welcome.vue?raw";
+import hviewReplPluginCode from "../template/hview-plus?raw";
+import containerCode from "../template/main.vue?raw";
+import hviewImports from "../template/imports.js";
 
 const MAIN_CONTAINER = "Playground.vue";
 const defaultMainFile = "App.vue";
