@@ -1,198 +1,274 @@
-import { reactive, watchEffect, version } from "vue";
-import { compileFile, File } from "@vue/repl";
-import { utoa, atou } from "../utils/encode";
-import * as defaultCompiler from "vue/compiler-sfc";
-import type { Store, SFCOptions, StoreState, OutputModes } from "@vue/repl";
-
+// @ts-nocheck
+import { File, type Store, type StoreState, compileFile } from "@vue/repl";
+import { atou, utoa } from "../utils/encode";
+import { genCdnLink, genImportMap, genVueLink } from "../utils/dependency";
+import { type ImportMap, mergeImportMap } from "../utils/import-map";
+import { IS_DEV } from "../constants";
+import mainCode from "../template/main.vue?raw";
 import welcomeCode from "../template/welcome.vue?raw";
-import hviewReplPluginCode from "../template/hview-plus?raw";
-import containerCode from "../template/main.vue?raw";
-import hviewImports from "../template/imports.js";
+import hviewPlusCode from "../template/hview-plus.js?raw";
+import { ElMessageBox } from "element-plus";
 
-const MAIN_CONTAINER = "Playground.vue";
-const defaultMainFile = "App.vue";
-const hviewReplPlugin = "hview-repl-plugin.js";
+export interface Initial {
+  serializedState?: string;
+  versions?: Versions;
+  userOptions?: UserOptions;
+  pr?: string | null;
+}
+export type VersionKey = "vue" | "hviewPlus";
+export type Versions = Record<VersionKey, string>;
+export interface UserOptions {
+  styleSource?: string;
+  showHidden?: boolean;
+}
+export type SerializeState = Record<string, string> & {
+  _o?: UserOptions;
+};
 
-export class ReplStore implements Store {
-  state: StoreState;
+const MAIN_FILE = "PlaygroundMain.vue";
+const APP_FILE = "App.vue";
+const ELEMENT_PLUS_FILE = "hview-plus.js";
+const IMPORT_MAP = "import-map.json";
+export const USER_IMPORT_MAP = "import_map.json";
 
-  compiler = defaultCompiler;
+export const useStore = (initial: Initial) => {
+  const versions = reactive(
+    initial.versions || { vue: "latest", hviewPlus: "latest" },
+  );
 
-  options?: SFCOptions;
+  let compiler = $(shallowRef<typeof import("vue/compiler-sfc")>());
+  const [nightly, toggleNightly] = $(useToggle(false));
+  let userOptions = $ref<UserOptions>(initial.userOptions || {});
+  const hideFile = $computed(() => !IS_DEV && !userOptions.showHidden);
 
-  initialShowOutput: boolean;
+  const files = initFiles(initial.serializedState || "");
+  const state = reactive<StoreState>({
+    mainFile: MAIN_FILE,
+    files,
+    activeFile: files[APP_FILE],
+    errors: [],
+    vueRuntimeURL: "",
+    vueServerRendererURL: "",
+    resetFlip: false,
+  });
 
-  initialOutputMode: OutputModes = "preview";
-
-  private readonly defaultVueRuntimeURL: string;
-
-  constructor({
-    serializedState = "",
-    defaultVueRuntimeURL = `https://unpkg.com/@vue/runtime-dom@${version}/dist/runtime-dom.esm-browser.js`,
-    showOutput = false,
-    outputMode = "preview",
-  }: {
-    serializedState?: string;
-    showOutput?: boolean;
-    // loose type to allow getting from the URL without inducing a typing error
-    outputMode?: OutputModes | string;
-    defaultVueRuntimeURL?: string;
-  }) {
-    let files: StoreState["files"] = {};
-
-    if (serializedState) {
-      const saved = JSON.parse(atou(serializedState));
-      // eslint-disable-next-line no-restricted-syntax
-      for (const filename of Object.keys(saved)) {
-        files[filename] = new File(filename, saved[filename]);
-      }
-    } else {
-      files = {
-        [defaultMainFile]: new File(defaultMainFile, welcomeCode),
-      };
+  const bultinImportMap = $computed<ImportMap>(() =>
+    genImportMap(versions, nightly as any),
+  );
+  const userImportMap = $computed<ImportMap>(() => {
+    const code = state.files[USER_IMPORT_MAP]?.code.trim();
+    if (!code) return {};
+    let map: ImportMap = {};
+    try {
+      map = JSON.parse(code);
+    } catch (err) {
+      console.error(err);
     }
+    return map;
+  });
+  const importMap = $computed<ImportMap>(() =>
+    mergeImportMap(bultinImportMap, userImportMap),
+  );
 
-    this.defaultVueRuntimeURL = defaultVueRuntimeURL;
+  // eslint-disable-next-line no-console
+  console.log("Files:", files, "Options:", userOptions);
 
-    this.initialShowOutput = showOutput;
-    this.initialOutputMode = outputMode as OutputModes;
+  const store: Store = reactive({
+    init,
+    state,
+    compiler: $$(compiler!),
+    setActive,
+    addFile,
+    deleteFile,
+    getImportMap,
+    initialShowOutput: false,
+    initialOutputMode: "preview",
+  });
 
-    let mainFile = defaultMainFile;
-    if (!files[mainFile]) {
-      mainFile = Object.keys(files)[0];
-    }
+  watch(
+    $$(importMap),
+    (content) => {
+      state.files[IMPORT_MAP] = new File(
+        IMPORT_MAP,
+        JSON.stringify(content, undefined, 2),
+        hideFile,
+      );
+    },
+    { immediate: true, deep: true },
+  );
+  watch(
+    () => versions.hviewPlus,
+    async (version) => {
+      const file = new File(
+        ELEMENT_PLUS_FILE,
+        await generatehviewPlusCode(version, userOptions.styleSource).trim(),
+        hideFile,
+      );
+      state.files[ELEMENT_PLUS_FILE] = file;
+      compileFile(store, file);
+    },
+    { immediate: true },
+  );
 
-    files[MAIN_CONTAINER] = new File(MAIN_CONTAINER, containerCode, true);
-    // @ts-ignore
-    this.state = reactive({
-      mainFile: MAIN_CONTAINER,
-      files,
-      activeFile: files[mainFile],
-      errors: [],
-      vueRuntimeURL: this.defaultVueRuntimeURL,
-      vueServerRendererURL: "",
-    });
-
-    this.initImportMap();
-
-    // varlet inject
-    // @ts-ignore
-    this.state.files[hviewReplPlugin] = new File(
-      hviewReplPlugin,
-      hviewReplPluginCode,
-      !import.meta.env.DEV,
+  function generatehviewPlusCode(version: string, styleSource?: string) {
+    // const style = styleSource
+    //   ? styleSource.replace("#VERSION#", version)
+    //   : genCdnLink(
+    //       nightly ? "hview-plus" : "hview-plus",
+    //       version,
+    //       "/dist/index.css",
+    //     );
+    return hviewPlusCode.replace(
+      "#STYLE#",
+      "https://unpkg.com/hview-plus@latest/theme-chalk/style.css",
     );
+  }
 
-    watchEffect(() => compileFile(this, this.state.activeFile));
+  async function setVueVersion(version: string) {
+    const { compilerSfc, runtimeDom } = genVueLink(version);
 
-    // eslint-disable-next-line no-restricted-syntax
-    for (const file in this.state.files) {
-      if (file !== defaultMainFile) {
-        compileFile(this, this.state.files[file]);
-      }
+    compiler = await import(/* @vite-ignore */ compilerSfc);
+    state.vueRuntimeURL = runtimeDom;
+    versions.vue = version;
+
+    // eslint-disable-next-line no-console
+    console.info(`[@vue/repl] Now using Vue version: ${version}`);
+  }
+
+  async function init() {
+    await setVueVersion(versions.vue);
+
+    for (const file of Object.values(state.files)) {
+      compileFile(store, file);
     }
+
+    watchEffect(() => compileFile(store, state.activeFile));
   }
 
-  init() {}
-
-  setActive(filename: string) {
-    this.state.activeFile = this.state.files[filename];
-  }
-
-  addFile(fileOrFilename: string | File) {
-    const file =
-      typeof fileOrFilename === "string"
-        ? new File(fileOrFilename)
-        : fileOrFilename;
-    this.state.files[file.filename] = file;
-    if (!file.hidden) this.setActive(file.filename);
-  }
-
-  deleteFile(filename: string) {
-    if (filename === hviewReplPlugin) {
-      // @ts-ignore
-      Snackbar.warning("Varlet depends on this file");
-      return;
-    }
-    // @ts-ignore
-    Dialog(`Are you sure you want to delete ${filename}?`).then((action) => {
-      if (action === "confirm") {
-        if (this.state.activeFile.filename === filename) {
-          this.state.activeFile = this.state.files[defaultMainFile];
-        }
-        delete this.state.files[filename];
-      }
-    });
-  }
-
-  serialize() {
-    return "#" + utoa(JSON.stringify(this.getFiles()));
-  }
-
-  getFiles() {
+  function getFiles() {
     const exported: Record<string, string> = {};
-    // eslint-disable-next-line guard-for-in,no-restricted-syntax
-    for (const filename in this.state.files) {
-      exported[filename] = this.state.files[filename].code;
+    for (const file of Object.values(state.files)) {
+      if (file.hidden) continue;
+      exported[file.filename] = file.code;
     }
     return exported;
   }
 
-  async setFiles(newFiles: Record<string, string>, mainFile = defaultMainFile) {
-    const files: Record<string, File> = {};
-    if (mainFile === defaultMainFile && !newFiles[mainFile]) {
-      files[mainFile] = new File(mainFile, welcomeCode);
-    }
-    // eslint-disable-next-line no-restricted-syntax
-    for (const [filename, file] of Object.entries(newFiles)) {
-      files[filename] = new File(filename, file);
-    }
-    // eslint-disable-next-line no-restricted-syntax
-    for (const file of Object.values(files)) {
-      await compileFile(this, file);
-    }
-    this.state.mainFile = mainFile;
-    this.state.files = files;
-    this.initImportMap();
-    this.setActive(mainFile);
+  function serialize() {
+    const state: SerializeState = { ...getFiles() };
+    state._o = userOptions;
+    return utoa(JSON.stringify(state));
+  }
+  function deserialize(text: string): SerializeState {
+    const state = JSON.parse(atou(text));
+    return state;
   }
 
-  private initImportMap() {
-    const map = this.state.files["import-map.json"];
-    if (!map) {
-      this.state.files["import-map.json"] = new File(
-        "import-map.json",
-        JSON.stringify(
-          {
-            imports: {
-              vue: this.defaultVueRuntimeURL,
-              ...hviewImports,
-            },
-          },
-          null,
-          2,
-        ),
-      );
+  function initFiles(serializedState: string) {
+    const files: StoreState["files"] = {};
+    if (serializedState) {
+      const saved = deserialize(serializedState);
+      for (const [filename, file] of Object.entries(saved)) {
+        if (filename === "_o") continue;
+        files[filename] = new File(filename, file as string);
+      }
+      userOptions = saved._o || {};
     } else {
-      try {
-        const json = JSON.parse(map.code);
-        if (!json.imports.vue) {
-          json.imports.vue = this.defaultVueRuntimeURL;
-          map.code = JSON.stringify(json, null, 2);
-        }
-        // eslint-disable-next-line no-empty
-      } catch (e) {}
+      files[APP_FILE] = new File(APP_FILE, welcomeCode);
+    }
+    files[MAIN_FILE] = new File(MAIN_FILE, mainCode, hideFile);
+    if (!files[USER_IMPORT_MAP]) {
+      files[USER_IMPORT_MAP] = new File(
+        USER_IMPORT_MAP,
+        JSON.stringify({ imports: {} }, undefined, 2),
+      );
+    }
+    return files;
+  }
+
+  function setActive(filename: string) {
+    const file = state.files[filename];
+    if (file.hidden) return;
+    state.activeFile = state.files[filename];
+  }
+
+  function addFile(fileOrFilename: string | File) {
+    const file =
+      typeof fileOrFilename === "string"
+        ? new File(fileOrFilename)
+        : fileOrFilename;
+    state.files[file.filename] = file;
+    setActive(file.filename);
+  }
+
+  async function deleteFile(filename: string) {
+    if (
+      [
+        ELEMENT_PLUS_FILE,
+        MAIN_FILE,
+        APP_FILE,
+        ELEMENT_PLUS_FILE,
+        IMPORT_MAP,
+        USER_IMPORT_MAP,
+      ].includes(filename)
+    ) {
+      ElMessage.warning(
+        "You cannot remove it, because Hview Plus requires it.",
+      );
+      return;
+    }
+
+    if (
+      await ElMessageBox.confirm(
+        `Are you sure you want to delete ${filename}?`,
+        {
+          title: "Delete File",
+          type: "warning",
+          center: true,
+        },
+      )
+    ) {
+      if (state.activeFile.filename === filename) {
+        setActive(APP_FILE);
+      }
+      delete state.files[filename];
     }
   }
 
-  getImportMap() {
-    try {
-      return JSON.parse(this.state.files["import-map.json"].code);
-    } catch (e) {
-      this.state.errors = [
-        `Syntax error in import-map.json: ${(e as Error).message}`,
-      ];
-      return {};
+  function getImportMap() {
+    return importMap;
+  }
+
+  async function setVersion(key: VersionKey, version: string) {
+    console.log(key, version);
+
+    switch (key) {
+      case "hviewPlus":
+        sethviewPlusVersion(version);
+        break;
+      case "vue":
+        await setVueVersion(version);
+        break;
     }
   }
-}
+
+  function sethviewPlusVersion(version: string) {
+    versions.hviewPlus = version;
+  }
+
+  return {
+    ...store,
+
+    versions,
+    nightly: $$(nightly),
+    userOptions: $$(userOptions),
+
+    init,
+    serialize,
+    setVersion,
+    toggleNightly,
+    pr: initial.pr,
+  };
+};
+
+export type ReplStore = ReturnType<typeof useStore>;

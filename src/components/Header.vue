@@ -1,49 +1,50 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+// @ts-nocheck
+import {
+  getSupportedEpVersions,
+  getSupportedVueVersions,
+} from "../utils/dependency";
+import Settings from "./Settings.vue";
 import Sun from "../icons/Sun.vue";
 import Moon from "../icons/Moon.vue";
 import Share from "../icons/Share.vue";
 import GitHub from "../icons/GitHub.vue";
-// @ts-ignore
-import pkg from "../../package.json";
+import SettingsIcon from "../icons/Settings.vue";
+import type { ComputedRef } from "vue";
+import type { ReplStore, VersionKey } from "../composables/store";
 
-// @ts-ignore
-const props = defineProps(["store", "dev", "ssr"]);
-// eslint-disable-next-line vue/no-setup-props-destructure
-const { store } = props;
+const appVersion = import.meta.env.APP_VERSION;
+const replVersion = import.meta.env.REPL_VERSION;
 
-// console.log(store);
+const nightly = $ref(false);
 
-// @ts-ignore
-const currentCommit = __COMMIT__;
-const activeVersion = ref(`@${currentCommit}`);
-const publishedVersions = ref<string[]>();
-const expanded = ref(false);
-// const ver = ref<string>("");
+const { store } = defineProps<{
+  store: ReplStore;
+}>();
 
-async function toggle() {
-  expanded.value = !expanded.value;
-  if (!publishedVersions.value) {
-    publishedVersions.value = await fetchVersions();
-  }
+interface Version {
+  text: string;
+  published: ComputedRef<string[]>;
+  active: string;
 }
 
-async function setVueVersion(v: string) {
-  activeVersion.value = `loading...`;
-  await store.setVueVersion(v);
-  activeVersion.value = `v${v}`;
-  expanded.value = false;
-}
+const versions = reactive<Record<VersionKey, Version>>({
+  hviewPlus: {
+    text: "Hview UI",
+    published: getSupportedEpVersions($$(nightly)),
+    active: store.versions.hviewPlus,
+  },
+  vue: {
+    text: "Vue",
+    published: getSupportedVueVersions(),
+    active: store.versions.vue,
+  },
+});
 
-function resetVueVersion() {
-  store.resetVueVersion();
-  activeVersion.value = `@${currentCommit}`;
-  expanded.value = false;
-}
-
-async function copyLink() {
-  await navigator.clipboard.writeText(location.href);
-  alert("Sharable URL has been copied to clipboard.");
+async function setVersion(key: VersionKey, v: string) {
+  versions[key].active = `loading...`;
+  await store.setVersion(key, v);
+  versions[key].active = v;
 }
 
 function toggleDark() {
@@ -55,112 +56,115 @@ function toggleDark() {
   );
 }
 
-onMounted(async () => {
-  window.addEventListener("click", () => {
-    expanded.value = false;
-  });
-  window.addEventListener("blur", () => {
-    if (document.activeElement?.tagName === "IFRAME") {
-      expanded.value = false;
-    }
-  });
-});
+const toggleNightly = () => {
+  store.toggleNightly(nightly);
+  setVersion("hviewPlus", "latest");
+};
 
-async function fetchVersions(): Promise<string[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/vuejs/core/releases?per_page=100`,
-  );
-  const releases: any[] = await res.json();
-  const versions = releases.map((r) =>
-    /^v/.test(r.tag_name) ? r.tag_name.slice(1) : r.tag_name,
-  );
-  // if the latest version is a pre-release, list all current pre-releases
-  // otherwise filter out pre-releases
-  let isInPreRelease = versions[0].includes("-");
-  const filteredVersions: string[] = [];
-  for (const v of versions) {
-    if (v.includes("-")) {
-      if (isInPreRelease) {
-        filteredVersions.push(v);
-      }
-    } else {
-      filteredVersions.push(v);
-      isInPreRelease = false;
-    }
-    if (filteredVersions.length >= 30 || v === "3.0.10") {
-      break;
-    }
-  }
-  return filteredVersions;
+async function copyLink() {
+  await navigator.clipboard.writeText(location.href);
+  ElMessage.success("Sharable URL has been copied to clipboard.");
 }
-
-// const getVersionHp = async () => {
-//   await axios.get("https://registry.npmjs.org/hview-plus").then((res: any) => {
-//     let versions = Object.keys(res.data.versions);
-//     ver.value = "v" + versions[versions.length - 1];
-//   });
-// };
-
-// getVersionHp();
 </script>
 
 <template>
   <nav>
-    <h1>
+    <h1 leading="[var(--nav-height)]" m-0 inline-block font-medium>
       <img alt="logo" src="https://oss.zhishiyu.online/common/hview-logo.png" />
       <span style="margin-top: -2px; margin-right: 6px"
         >Hview UI Playground</span
       >
-      <el-tag size="small" style="margin: 0 8px">{{ pkg.version }}</el-tag>
-      <el-tag size="small"> repl v1.3.0 </el-tag>
+      <el-tag size="small" style="margin: 0 8px">{{ appVersion }}</el-tag>
+      <el-tag size="small"> {{ replVersion }} </el-tag>
+      <el-tag v-if="store.pr" size="small">PR {{ store.pr }}</el-tag>
     </h1>
-    <div class="links">
-      <!-- <div class="version" @click.stop>
-        <span class="active-version" @click="toggle">
-          Version
-          <span class="number">{{ activeVersion }}</span>
-        </span>
-        <ul class="versions" :class="{ expanded }">
-          <li v-if="!publishedVersions"><a>loading versions...</a></li>
-          eslint-disable-next-line vue/require-v-for-key
-          eslint-disable-next-line vue/require-v-for-key
-          <li v-for="version of publishedVersions">
-            <a @click="setVueVersion(version)">v{{ version }}</a>
-          </li>
-          <li>
-            <a @click="resetVueVersion">This Commit ({{ currentCommit }})</a>
-          </li>
-          <li>
-            <a href="https://app.netlify.com/sites/vue-sfc-playground/deploys" target="_blank">Commits History</a>
-          </li>
-        </ul>
-      </div> -->
-      <!-- <button
-        title="Toggle development production mode"
-        class="toggle-dev"
-        :class="{ dev }"
-        @click="$emit('toggle-dev')">
-        <span>{{ dev ? "DEV" : "PROD" }}</span>
-      </button> -->
-      <button title="Toggle dark mode" class="toggle-dark" @click="toggleDark">
-        <Sun class="light" />
-        <Moon class="dark" />
-      </button>
-      <button title="Copy sharable URL" class="share" @click="copyLink">
-        <Share />
-      </button>
-      <button title="View on GitHub" class="github">
-        <a
-          href="https://github.com/ChaiMayor/hview-ui/tree/dev"
-          target="_blank">
-          <GitHub />
-        </a>
-      </button>
+
+    <div flex="~ gap-2" class="r-right" items-center>
+      <div
+        v-for="(v, key) of versions"
+        :key="key"
+        flex="~ gap-2"
+        class="r-right-box"
+        v-show="key === 'hviewPlus'"
+        items-center
+        lt-lg-hidden>
+        <span style="margin-top: -2px; margin-right: 10px"
+          >{{ v.text }} Version:</span
+        >
+        <el-select
+          :model-value="v.active"
+          size="small"
+          fit-input-width
+          style="margin-right: 14px"
+          w-36
+          @update:model-value="setVersion(key, $event)">
+          <el-option v-for="ver of v.published" :key="ver" :value="ver">
+            {{ ver }}
+          </el-option>
+        </el-select>
+
+        <el-checkbox
+          v-model="nightly"
+          style="margin-right: 12px"
+          @change="toggleNightly">
+          Switch
+        </el-checkbox>
+      </div>
+
+      <div flex="~ gap-4" class="icons">
+        <button text-lg i-ri-share-line @click="copyLink">
+          <Share />
+        </button>
+        <button
+          title="Toggle dark mode"
+          class="toggle-dark"
+          @click="toggleDark">
+          <Sun class="light" />
+          <Moon class="dark" />
+        </button>
+        <button>
+          <a
+            href="https://github.com/ChaiMayor/hview-ui/tree/dev"
+            target="_blank">
+            <GitHub />
+          </a>
+        </button>
+
+        <el-popover trigger="click" width="300px">
+          <Settings />
+          <template #reference>
+            <button text-lg i-ri:settings-line>
+              <SettingsIcon />
+            </button>
+          </template>
+        </el-popover>
+      </div>
     </div>
   </nav>
 </template>
 
-<style>
+<style lang="scss">
+nav {
+  --bg: #fff;
+  --bg-light: #fff;
+  --border: #ddd;
+
+  --at-apply: "box-border flex justify-between px-4 z-999 relative";
+
+  height: var(--nav-height);
+  background-color: var(--bg);
+  box-shadow: 0 0 6px var(--el-color-primary);
+}
+
+.dark nav {
+  --bg: #1a1a1a;
+  --bg-light: #242424;
+  --border: #383838;
+
+  --at-apply: "shadow-none";
+  border-bottom: 1px solid var(--border);
+}
+
 nav {
   --bg: #fff;
   --bg-light: #fff;
@@ -352,5 +356,72 @@ h1 img {
 
 .links > * + * {
   margin-left: 4px;
+}
+
+.r-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+.r-right-box {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+html.dark {
+  .icons {
+    button {
+      font-size: 16px;
+      margin-right: 6px;
+      a {
+        svg {
+          width: 20px;
+          height: 20px;
+        }
+      }
+      svg {
+        width: 16px;
+        height: 16px;
+        color: #fff;
+      }
+    }
+  }
+}
+
+.icons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-direction: row;
+  margin-top: 1px;
+  svg {
+    width: 16px;
+    height: 16px;
+    color: #242424;
+  }
+  button {
+    font-size: 16px;
+    margin-right: 6px;
+    &:last-of-type {
+      svg {
+        width: 19px;
+        height: 19px;
+      }
+    }
+    a {
+      svg {
+        width: 20px;
+        height: 20px;
+      }
+    }
+    svg {
+      width: 16px;
+      height: 16px;
+      color: #242424;
+    }
+  }
 }
 </style>

@@ -1,8 +1,10 @@
 <script setup>
 import App from "./App.vue";
-import { installHviewUI } from "./hview-repl-plugin.js";
+import { installHviewUI } from "./hview-plus.js";
 
-installHviewUI();
+if (installHviewUI) {
+  installHviewUI();
+}
 </script>
 
 <template>
